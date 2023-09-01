@@ -56,7 +56,7 @@ Upcoming step is to understand how is analysis run and how the result should be 
 ```c++
  using Result = std::map<StringRef, unsigned int>;
 ```
-specifies the result, which keys are strigs representing the name of the global, and the value — number of uses. The analysis will be executed due to it run function, so 
+specifies the result, which keys are strings representing the name of the global, and the value — number of uses. The analysis will be executed due to it run function, so 
 we declare in our GlobalCollectorAnalysis 
 ```c++
  Result run(Module &M, ModuleAnalysisManager &);
@@ -91,6 +91,38 @@ Also, don't forget to add the header to llvm-project/llvm/lib/Passes/PassBuilder
 ```
 opt -passes=my-analysis-pass sample.ll
 ```
-command in terminal. Analysis can't be called separately, taht's why the PrinterPass is used.
+command in terminal. Analysis can't be called separately, that's why the PrinterPass is used.
   
 # Transformation Pass
+In our case, the transformation pass intends to print all the global variables' data, which uses are more than 2. This time, we also need a header file and a cpp file. I named them GlobalTransformer.h and GlobalTransformer.cpp respectively. The header must be located in llvm-project/llvm/include/llvm/Transforms/Utils, the cpp — llvm-project/llvm/lib/Transforms/Utils directories. To register our pass we need to perform the same steps as above in file PassRegistry.def and PassBuilder.cpp.  
+In the header file, we need to include the following, 
+```c++
+  #include "llvm/Analysis/GlobalCollector.h"                                                                                                                                       #include "llvm/IR/PassManager.h"
+```
+as we want to use the analysis we've written before. There's nothing new to say here, just repetitions of all the necessary steps, which have been discussed above.  
+
+Now, the cpp file. The main part is to use the analysis, so we are not going to deepen to much into details, you can always take a look on the files.  
+So, the method, which allows to take the results of the analysis is called getResult, defined in "llvm/IR/PassManager.h":
+```c++
+  /// Get the result of an analysis pass for a given IR unit.
+  /// Runs the analysis if a cached result is not available.
+  template <typename PassT>
+  typename PassT::Result &getResult(IRUnitT &IR, ExtraArgTs... ExtraArgs) {
+    assert(AnalysisPasses.count(PassT::ID()) &&
+           "This analysis pass was not registered prior to being queried");
+    ResultConceptT &ResultConcept =
+        getResultImpl(PassT::ID(), IR, ExtraArgs...);
+ 
+    using ResultModelT =
+        detail::AnalysisResultModel<IRUnitT, PassT, typename PassT::Result,
+                                    PreservedAnalyses, Invalidator>;
+ 
+    return static_cast<ResultModelT &>(ResultConcept).Result;
+  }
+```
+Thus, we simply add the following in line to our run function
+```c++
+  std::map<StringRef, unsigned int> var = MAM.getResult<GlobalCollectorAnalysis>(M);
+```
+and ta-da! Done!
+
